@@ -13,7 +13,6 @@ module RemoteData exposing
     , withDefault
     , unwrap
     , unpack
-    , sendRequest
     , fromMaybe
     , fromResult
     , toMaybe
@@ -26,6 +25,7 @@ module RemoteData exposing
     , isNotAsked
     , update
     , prism
+    , get
     )
 
 {-| A datatype representing fetched data.
@@ -54,9 +54,10 @@ Now we can create an HTTP get:
 
     getNews : Cmd Msg
     getNews =
-        Http.get "/news" decodeNews
-            |> RemoteData.sendRequest
-            |> Cmd.map NewsResponse
+        RemoteData.get {
+            url = "/news"
+            , Http.expectJson NewsResponse decodeNews
+        }
 
 We trigger it in our `init` function:
 
@@ -76,8 +77,8 @@ We handle it in our `update` function:
                 )
 
 Most of this you'd already have in your app, and the changes are just
-wrapping the datatype in `Webdata`, and replacing the `Http.send` call
-with `RemoteData.sendRequest`.
+wrapping the datatype in `Webdata`, and replacing the `Http.get` call
+with `RemoteData.get`, or using the Task oriented API.
 
 Now we get to where we really want to be, rendering the data and
 handling the different states in the UI gracefully:
@@ -335,18 +336,56 @@ fromResult result =
             Success x
 
 
-{-| Convenience function for dispatching `Http.Request`s. It's like
-`Http.send`, but yields a `WebData` response.
+{-| Convenience function for sending HTTP GET requests. It's like Http.get,
+but yields a `WebData` response.
 
     getNews : Cmd Msg
     getNews =
-        Http.get "/news" decodeNews
-            |> RemoteData.sendRequest
+        Http.get
+            { url = "/news"
+            , expect = Http.expectJson GotNews decodeNews
+            }
 
 -}
-sendRequest : Http.Request a -> Cmd (WebData a)
-sendRequest =
-    Http.send fromResult
+get : { url : String, expect : Http.Expect (Result Http.Error msg) } -> Cmd (WebData msg)
+get r =
+    Http.get r
+        |> Cmd.map fromResult
+
+
+{-| Convenience function for sending HTTP GET requests. It's like Http.get,
+but yields a `WebData` response.
+
+    postNews : Cmd Msg
+    postNews =
+        Http.post
+            { url = "/news"
+            , body = Http.jsonBody (encodeNews news)
+            , expect = Http.expectJson GotNews decodeNews
+            }
+
+-}
+post : { url : String, body : Http.Body, expect : Http.Expect (Result Http.Error msg) } -> Cmd (WebData msg)
+post r =
+    Http.post r
+        |> Cmd.map fromResult
+
+
+{-| Helper to send any HTTP request as command. It's like Http.request, but yields a `WebData` response.
+-}
+request :
+    { method : String
+    , headers : List Http.Header
+    , url : String
+    , body : Http.Body
+    , expect : Http.Expect (Result Http.Error msg)
+    , timeout : Maybe Float
+    , tracker : Maybe String
+    }
+    -> Cmd (WebData msg)
+request r =
+    Http.request r
+        |> Cmd.map fromResult
 
 
 {-| Convert a `RemoteData e a` to a `Maybe a`
